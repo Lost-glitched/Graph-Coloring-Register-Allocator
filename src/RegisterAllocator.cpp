@@ -138,6 +138,7 @@ std::vector<StackEntry> RegisterAllocator::simplify(
             if (ig.degree(v) < K_ && moves.isMoveRelated(v)) {
                 log("  FREEZE: giving up coalescing for " + v);
                 moves.removeMovesFor(v);
+                trace.freezeOrder.push_back(v);
                 frozen = true;
                 break;
             }
@@ -163,6 +164,7 @@ std::vector<StackEntry> RegisterAllocator::simplify(
         auto neighbors = ig.removeNode(bestCandidate);
         stack.push_back({bestCandidate, neighbors, true});
         trace.spillCandidates.push_back(bestCandidate);
+        trace.optimisticSpillOrder.push_back(bestCandidate);
         trace.simplifyOrder.push_back(bestCandidate);
         log("  SPILL CANDIDATE (optimistic): " + bestCandidate +
             " (cost=" + std::to_string(bestCost) + ")");
@@ -242,6 +244,7 @@ void RegisterAllocator::applyAssignment(
 bool RegisterAllocator::allocate(IRProgram& program) {
     traces_.clear();
     result_ = AllocationResult{};
+    nextStackSlot_ = 0;
     tempCounter_ = 0;
     spilledVariables_.clear();
 
@@ -254,9 +257,6 @@ bool RegisterAllocator::allocate(IRProgram& program) {
             program.renameVariable(v, "_user_" + v);
         }
     }
-
-    // Global assignment map accumulated across rounds (for coalesced names)
-    std::unordered_map<std::string, int> globalAssignment;
 
     for (int round = 0; round < maxRounds_; ++round) {
         RoundTrace trace;
@@ -307,10 +307,10 @@ bool RegisterAllocator::allocate(IRProgram& program) {
             auto cr = coalescer.coalesce(ig, moves, program, K_);
             
             if (!cr.empty()) {
-                coalescingProgress = true;
                 for (auto& c : cr) {
                     roundCoalesceResults.push_back(c);
                     if (c.coalesced) {
+                        coalescingProgress = true;
                         log("  Coalescing: " + c.a + " <- " + c.b + " : SAFE (merged), rebuilding CFG...");
                     } else {
                         log("  Coalescing: " + c.a + " <- " + c.b +
@@ -343,17 +343,10 @@ bool RegisterAllocator::allocate(IRProgram& program) {
         log("\n--- Select Phase ---");
         auto actualSpills = select(selectStack, ig, trace);
 
-        traces_.push_back(trace);
-
         // --- 8. Check for spills ---
         if (actualSpills.empty()) {
             // SUCCESS: apply assignment to IR
             log("\n--- All variables colored successfully! ---\n");
-
-            // Merge this round's assignments into global map
-            for (auto& [var, reg] : trace.selectAssignment) {
-                globalAssignment[var] = reg;
-            }
 
             // Build final result
             for (auto& [var, slot] : spilledVariables_) {
@@ -377,6 +370,7 @@ bool RegisterAllocator::allocate(IRProgram& program) {
 
             // Apply physical register names to the IR
             applyAssignment(program, trace.selectAssignment);
+            traces_.push_back(std::move(trace));
 
             return true;
         }
@@ -389,6 +383,8 @@ bool RegisterAllocator::allocate(IRProgram& program) {
 
         SpillRewriter rewriter;
         auto newTemps = rewriter.rewrite(program, actualSpills, nextStackSlot_, tempCounter_, spilledVariables_);
+        trace.spillTemps.insert(trace.spillTemps.end(), newTemps.begin(), newTemps.end());
+        traces_.push_back(std::move(trace));
 
         log("  Inserted " + std::to_string(newTemps.size()) +
             " new temporaries for spills.");

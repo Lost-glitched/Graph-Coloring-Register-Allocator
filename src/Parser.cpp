@@ -50,6 +50,30 @@ static std::string stripBrackets(const std::string& s) {
     return r;
 }
 
+static int parseSlot(const std::string& token, int lineNumber) {
+    if (token.size() < 3 || token.front() != '[' || token.back() != ']') {
+        throw std::runtime_error("Line " + std::to_string(lineNumber) + ": Invalid slot index format");
+    }
+
+    std::string slot = stripBrackets(token);
+    std::string digits = slot.find("stack_slot_") == 0 ? slot.substr(11) : slot;
+    if (digits.empty() || digits.front() == '-') {
+        throw std::runtime_error("Line " + std::to_string(lineNumber) + ": Invalid slot index format");
+    }
+
+    size_t parsed = 0;
+    int slotIndex = -1;
+    try {
+        slotIndex = std::stoi(digits, &parsed);
+    } catch (...) {
+        throw std::runtime_error("Line " + std::to_string(lineNumber) + ": Invalid slot index format");
+    }
+    if (parsed != digits.size()) {
+        throw std::runtime_error("Line " + std::to_string(lineNumber) + ": Invalid slot index format");
+    }
+    return slotIndex;
+}
+
 // ---------------------------------------------------------------------------
 // parseLine
 // ---------------------------------------------------------------------------
@@ -63,60 +87,47 @@ Instruction Parser::parseLine(const std::string& rawLine, int lineNumber) const 
 
     // --- LABEL ---
     if (tokens[0] == "LABEL") {
-        if (tokens.size() < 2)
+        if (tokens.size() != 2)
             throw std::runtime_error("Line " + std::to_string(lineNumber) +
-                                     ": LABEL requires a name");
+                                     ": LABEL requires exactly a name (2 tokens)");
         return Instruction::makeLabel(tokens[1]);
     }
 
     // --- GOTO ---
     if (tokens[0] == "GOTO") {
-        if (tokens.size() < 2)
+        if (tokens.size() != 2)
             throw std::runtime_error("Line " + std::to_string(lineNumber) +
-                                     ": GOTO requires a label");
+                                     ": GOTO requires exactly a label (2 tokens)");
         return Instruction::makeGoto(tokens[1]);
     }
 
     // --- IF cond GOTO label ---
     if (tokens[0] == "IF") {
-        if (tokens.size() < 4 || tokens[2] != "GOTO")
+        if (tokens.size() != 4 || tokens[2] != "GOTO")
             throw std::runtime_error("Line " + std::to_string(lineNumber) +
-                                     ": expected IF <cond> GOTO <label>");
+                                     ": expected IF <cond> GOTO <label> (4 tokens)");
         return Instruction::makeBranch(tokens[1], tokens[3]);
     }
 
     // --- LOAD dest, [slot] ---
     if (tokens[0] == "LOAD") {
-        if (tokens.size() < 3)
+        if (tokens.size() != 3)
             throw std::runtime_error("Line " + std::to_string(lineNumber) +
-                                     ": LOAD requires dest and [slot]");
-        // dest may have trailing comma: "a," -> "a"
+                                     ": LOAD requires exactly dest and [slot] (3 tokens)");
         std::string dest = tokens[1];
         if (!dest.empty() && dest.back() == ',') dest.pop_back();
-        std::string slot = stripBrackets(tokens[2]);
-        int slotIdx = -1;
-        if (slot.find("stack_slot_") == 0) {
-            slotIdx = std::stoi(slot.substr(11));
-        } else {
-            try { slotIdx = std::stoi(slot); } catch (...) {}
-        }
+        int slotIdx = parseSlot(tokens[2], lineNumber);
         return Instruction::makeLoad(dest, slotIdx);
     }
 
     // --- STORE src, [slot] ---
     if (tokens[0] == "STORE") {
-        if (tokens.size() < 3)
+        if (tokens.size() != 3)
             throw std::runtime_error("Line " + std::to_string(lineNumber) +
-                                     ": STORE requires src and [slot]");
+                                     ": STORE requires exactly src and [slot] (3 tokens)");
         std::string src = tokens[1];
         if (!src.empty() && src.back() == ',') src.pop_back();
-        std::string slot = stripBrackets(tokens[2]);
-        int slotIdx = -1;
-        if (slot.find("stack_slot_") == 0) {
-            slotIdx = std::stoi(slot.substr(11));
-        } else {
-            try { slotIdx = std::stoi(slot); } catch (...) {}
-        }
+        int slotIdx = parseSlot(tokens[2], lineNumber);
         return Instruction::makeStore(src, slotIdx);
     }
 
@@ -129,14 +140,14 @@ Instruction Parser::parseLine(const std::string& rawLine, int lineNumber) const 
             // Simple copy: dest = src1
             return Instruction::makeMov(dest, src1);
         }
-        if (tokens.size() >= 5 && isOperator(tokens[3])) {
+        if (tokens.size() == 5 && isOperator(tokens[3])) {
             // Arithmetic: dest = src1 op src2
             Opcode op = opFromChar(tokens[3]);
             std::string src2 = tokens[4];
             return Instruction::makeArith(op, dest, src1, src2);
         }
         throw std::runtime_error("Line " + std::to_string(lineNumber) +
-                                 ": malformed assignment");
+                                 ": malformed assignment (expected 3 or 5 tokens)");
     }
 
     throw std::runtime_error("Line " + std::to_string(lineNumber) +

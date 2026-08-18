@@ -59,7 +59,11 @@ void ControlFlowGraph::build(const IRProgram& program) {
 
         // Register label → block mapping
         if (!bb->instructions.empty() && bb->instructions.front().isLabel()) {
-            labelToBlock_[bb->instructions.front().label] = bb.get();
+            const std::string& lab = bb->instructions.front().label;
+            if (labelToBlock_.find(lab) != labelToBlock_.end()) {
+                throw std::runtime_error("CFG Error: Duplicate label '" + lab + "' defined.");
+            }
+            labelToBlock_[lab] = bb.get();
         }
 
         blocks_.push_back(std::move(bb));
@@ -75,17 +79,19 @@ void ControlFlowGraph::build(const IRProgram& program) {
         if (last.opcode == Opcode::GOTO) {
             // Unconditional jump — single edge to target
             BasicBlock* target = blockForLabel(last.label);
-            if (target) {
-                bb->successors.push_back(target);
-                target->predecessors.push_back(bb);
+            if (!target) {
+                throw std::runtime_error("CFG Error: GOTO target '" + last.label + "' is undefined.");
             }
+            bb->successors.push_back(target);
+            target->predecessors.push_back(bb);
         } else if (last.opcode == Opcode::BRANCH) {
             // Conditional branch — edge to target AND fall-through
             BasicBlock* target = blockForLabel(last.label);
-            if (target) {
-                bb->successors.push_back(target);
-                target->predecessors.push_back(bb);
+            if (!target) {
+                throw std::runtime_error("CFG Error: BRANCH target '" + last.label + "' is undefined.");
             }
+            bb->successors.push_back(target);
+            target->predecessors.push_back(bb);
             // Fall-through
             if (i + 1 < blocks_.size()) {
                 BasicBlock* next = blocks_[i + 1].get();

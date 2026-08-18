@@ -41,11 +41,13 @@ Move Detection + Conservative Coalescing (Briggs' criterion)
     ↓
 Simplify (push degree < K nodes)
     ↓
+Freeze move-related low-degree nodes when coalescing is blocked
+    ↓
 Optimistic Spill Selection (degree ≥ K, lowest cost)
     ↓
 Select / Graph Coloring (pop stack, assign registers)
     ↓
-If actual spills: IR rewriting with LOAD/STORE → repeat
+If actual spills: IR rewriting with LOAD/STORE → rebuild CFG/liveness/interference and repeat
     ↓
 Final Allocated IR
 ```
@@ -149,7 +151,7 @@ The demo runs a built-in sample program through the entire pipeline and prints d
 ./build/tests
 ```
 
-Runs 10 automated tests covering:
+Runs 20 automated tests covering:
 
 1. No spilling needed (K=4)
 2. Spilling required (K=2)
@@ -160,7 +162,17 @@ Runs 10 automated tests covering:
 7. Loops and spill-cost heuristics
 8. Optimistic spill candidates that get colored
 9. Optimistic spill candidates that actually spill
-10. Different K values (K=2 and K=3)
+10. Freeze decisions after rejected coalescing
+11. No-spill coloring
+12. Optimistic spill candidates that get colored
+13. Optimistic spill candidates that actually spill
+14. Spill rewriting and stack-slot assignment
+15. Multiple spill rounds and fresh spill temporaries
+16. Physical-register-name collisions
+17. Different K values (K=2 and K=3)
+18. Loop-containing programs
+19. Final allocation invariants
+20. Remaining move validity
 
 ## Architecture
 

@@ -3,6 +3,7 @@
 // ============================================================================
 
 #include "MoveGraph.h"
+#include <algorithm>
 
 namespace regalloc {
 

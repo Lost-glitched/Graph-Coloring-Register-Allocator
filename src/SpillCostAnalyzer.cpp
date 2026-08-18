@@ -16,6 +16,7 @@
 #include <unordered_set>
 #include <vector>
 #include <stack>
+#include <functional>
 
 namespace regalloc {
 

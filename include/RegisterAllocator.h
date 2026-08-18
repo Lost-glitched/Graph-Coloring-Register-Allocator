@@ -48,6 +48,9 @@ struct RoundTrace {
     std::vector<CoalesceResult> coalesceResults;
     std::vector<std::string> simplifyOrder;     // pushed in this order
     std::vector<std::string> spillCandidates;   // optimistic spill candidates
+    std::vector<std::string> freezeOrder;       // nodes frozen in this round
+    std::vector<std::string> optimisticSpillOrder; // same as spillCandidates but explicit naming
+    std::vector<std::string> spillTemps;         // fresh temporaries created during rewriting
     std::unordered_map<std::string, int> selectAssignment;  // var → reg index
     std::unordered_set<std::string> actualSpills;           // vars that actually spilled
 };
