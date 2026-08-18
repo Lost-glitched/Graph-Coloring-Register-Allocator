@@ -98,19 +98,40 @@ Variable/label names are arbitrary alphanumeric identifiers. There is no limit o
 
 - CMake 3.16+
 - A C++20 compiler (MSVC 2019+, GCC 10+, or Clang 10+)
+- A compatible CMake build tool such as NMake, MinGW Make, or Ninja
 
 ### Build Steps
 
 ```bash
-# Configure
+# Configure (uses the generator available on your system)
 cmake -B build -S .
 
 # Build
 cmake --build build
 
 # Run tests
-cd build && ctest --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
+
+On Windows with MSYS2 UCRT64 GCC, install MinGW Make and configure explicitly:
+
+```powershell
+# Install the CMake build tool (run once)
+& "C:\msys64\usr\bin\bash.exe" -lc "pacman -S --needed mingw-w64-ucrt-x86_64-make"
+
+# Configure and build
+cmake -S . -B build-mingw -G "MinGW Makefiles" `
+    -DCMAKE_CXX_COMPILER=C:/msys64/ucrt64/bin/g++.exe `
+    -DCMAKE_MAKE_PROGRAM=C:/msys64/ucrt64/bin/mingw32-make.exe
+cmake --build build-mingw
+
+# Run tests
+ctest --test-dir build-mingw --output-on-failure
+```
+
+On Windows, `run.bat` builds and runs the demo automatically. It uses NMake
+through CMake when available and otherwise falls back to the detected GCC
+compiler.
 
 Or using Make directly:
 
