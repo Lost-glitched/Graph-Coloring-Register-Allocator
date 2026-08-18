@@ -35,6 +35,27 @@ std::string AllocationResult::toString(int K) const {
         }
         os << "\n";
     }
+
+    if (!aliases.empty()) {
+        std::vector<std::string> aliasNames;
+        for (const auto& [alias, _] : aliases) aliasNames.push_back(alias);
+        std::sort(aliasNames.begin(), aliasNames.end());
+
+        os << "\n  Coalesced aliases\n";
+        for (const auto& alias : aliasNames) {
+            const auto& representative = aliases.at(alias);
+            os << "  " << alias << " -> " << representative;
+            auto assignment = assignments.find(representative);
+            if (assignment != assignments.end()) {
+                if (assignment->second.spilled) {
+                    os << " [stack_slot_" << assignment->second.stackSlot << "]";
+                } else {
+                    os << " R" << assignment->second.physReg;
+                }
+            }
+            os << "\n";
+        }
+    }
     return os.str();
 }
 

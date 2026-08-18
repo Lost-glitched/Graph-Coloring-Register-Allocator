@@ -23,6 +23,9 @@ public:
     /// Map: variable → Assignment
     std::unordered_map<std::string, Assignment> assignments;
 
+    /// Map: coalesced variable alias → its surviving representative.
+    std::unordered_map<std::string, std::string> aliases;
+
     /// List of stack slots allocated (for display).
     int totalStackSlots{0};
 

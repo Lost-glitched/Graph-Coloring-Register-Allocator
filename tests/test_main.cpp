@@ -258,7 +258,7 @@ static bool test_moveException() {
     // BUT due to MOVE exception, they shouldn't interfere on this instruction.
     Parser p; auto prog = p.parse(ir2);
     RegisterAllocator alloc(2);
-    alloc.allocate(prog); // Should coalesce a and b because they don't interfere
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded"); // Should coalesce a and b because they don't interfere
     
     bool coalesced = false;
     for (auto& t : alloc.traces()) {
@@ -278,7 +278,7 @@ static bool test_safeCoalescing() {
     std::string ir = "a = 1\nb = a\nc = b\n";
     Parser p; auto prog = p.parse(ir);
     RegisterAllocator alloc(3);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     
     bool coalesced = false;
     for (auto& t : alloc.traces()) {
@@ -287,6 +287,9 @@ static bool test_safeCoalescing() {
         }
     }
     TEST_ASSERT(coalesced, "Safe coalescing occurred");
+    TEST_ASSERT(!alloc.result().aliases.empty(), "Coalesced alias was reported");
+    TEST_ASSERT(alloc.result().toString(3).find(" -> ") != std::string::npos,
+        "Allocation output includes coalesced alias mapping");
     return true;
 }
 
@@ -311,7 +314,7 @@ e = c + d
 )";
     Parser p; auto prog = p.parse(ir);
     RegisterAllocator alloc(2);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     
     bool rejected = false;
     for (auto& t : alloc.traces()) {
@@ -342,7 +345,7 @@ f = b + d
 )";
     Parser p; auto prog = p.parse(ir);
     RegisterAllocator alloc(2);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     
     bool froze = false;
     for (auto& t : alloc.traces()) {
@@ -359,7 +362,7 @@ static bool test_noSpillColoring() {
     std::string ir = "a = 1\nb = 2\nc = a + b\n";
     Parser p; auto prog = p.parse(ir);
     RegisterAllocator alloc(3);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     
     TEST_ASSERT(alloc.result().totalStackSlots == 0, "0 spills");
     TEST_ASSERT(validateFinalAllocation(prog, prog, alloc, 3), "Validation passed");
@@ -394,12 +397,13 @@ e = a + c
     // But 'b' and 'c' can both get R0. Then 'a' can get R1!
     Parser p; auto prog = p.parse(ir2);
     RegisterAllocator alloc(2);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     
     bool optimisticSuccess = false;
     for (auto& t : alloc.traces()) {
         for (auto& cand : t.optimisticSpillOrder) {
-            if (t.actualSpills.find(cand) == t.actualSpills.end()) {
+                if (t.actualSpills.find(cand) == t.actualSpills.end() &&
+                     t.selectAssignment.find(cand) != t.selectAssignment.end()) {
                 optimisticSuccess = true;
             }
         }
@@ -423,7 +427,7 @@ f = c + a
 )";
     Parser p; auto prog = p.parse(ir);
     RegisterAllocator alloc(2);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     
     bool actualSpill = false;
     for (auto& t : alloc.traces()) {
@@ -449,7 +453,7 @@ f = c + a
     Parser p; auto originalProg = p.parse(ir);
     auto prog = originalProg;
     RegisterAllocator alloc(2);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     
     bool hasLoadStore = false;
     for (auto& instr : prog.instructions) {
@@ -471,9 +475,13 @@ static bool test_multipleSpillRounds() {
     Parser p; auto originalProg = p.parse(ir);
     auto prog = originalProg;
     RegisterAllocator alloc(2);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     
-    TEST_ASSERT(alloc.traces().size() > 1, "Took multiple rounds");
+        int actualSpillRounds = 0;
+        for (const auto& trace : alloc.traces()) {
+            if (!trace.actualSpills.empty()) ++actualSpillRounds;
+        }
+        TEST_ASSERT(actualSpillRounds >= 2, "Took multiple actual spill rounds");
     
     // Check for unique spill temps (v.spill.0, v.spill.1 etc.)
     std::set<std::string> seenTemps;
@@ -496,9 +504,13 @@ static bool test_physRegCollision() {
     Parser p; auto originalProg = p.parse(ir);
     auto prog = originalProg;
     RegisterAllocator alloc(2);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     
     // Original program used R0/R1. Allocator must have sanitized them.
+    TEST_ASSERT(alloc.result().assignments.count("_user_R0") == 1,
+        "R0 collision was sanitized and assigned");
+    TEST_ASSERT(alloc.result().assignments.count("_user_R1") == 1,
+        "R1 collision was sanitized and assigned");
     TEST_ASSERT(validateFinalAllocation(originalProg, prog, alloc, 2), "Validation passed with collisions safely handled");
     return true;
 }
@@ -511,13 +523,13 @@ static bool test_differentK() {
     Parser p;
     auto prog1 = p.parse(ir);
     RegisterAllocator alloc3(3);
-    alloc3.allocate(prog1);
+    TEST_ASSERT(alloc3.allocate(prog1), "K=3 allocation succeeded");
     TEST_ASSERT(alloc3.result().totalStackSlots == 0, "K=3 has no spills");
     
     auto prog2 = p.parse(
         "a = 1\nb = 2\nc = 3\nd = a + b\ne = b + c\nf = c + a\n");
     RegisterAllocator alloc2(2);
-    alloc2.allocate(prog2);
+    TEST_ASSERT(alloc2.allocate(prog2), "K=2 allocation succeeded");
     TEST_ASSERT(alloc2.result().totalStackSlots > 0, "K=2 has spills");
     return true;
 }
@@ -537,7 +549,7 @@ LABEL L2
     Parser p; auto originalProg = p.parse(ir);
     auto prog = originalProg;
     RegisterAllocator alloc(3);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     TEST_ASSERT(validateFinalAllocation(originalProg, prog, alloc, 3), "Loop validation passed");
     return true;
 }
@@ -552,7 +564,7 @@ static bool test_finalValidationDirect() {
     Parser p; auto originalProg = p.parse(ir);
     auto prog = originalProg;
     RegisterAllocator alloc(2);
-    alloc.allocate(prog);
+    TEST_ASSERT(alloc.allocate(prog), "Allocation succeeded");
     TEST_ASSERT(validateFinalAllocation(originalProg, prog, alloc, 2), "Final invariants strictly hold");
     return true;
 }

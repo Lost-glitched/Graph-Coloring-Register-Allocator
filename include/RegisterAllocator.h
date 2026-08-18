@@ -7,7 +7,7 @@
 //   2. Liveness analysis
 //   3. Interference graph construction
 //   4. Move detection + conservative coalescing
-//   5. Simplify (degree < K) + optimistic spill selection
+//   5. Simplify (degree < K), Freeze, + optimistic spill selection
 //   6. Select / graph coloring
 //   7. If actual spills → rewrite IR and repeat
 //
@@ -82,6 +82,7 @@ private:
     int nextStackSlot_{0};
     int tempCounter_{0};
     std::unordered_map<std::string, int> spilledVariables_;
+    std::unordered_map<std::string, std::string> coalescedAliases_;
     AllocationResult result_;
     std::vector<RoundTrace> traces_;
     std::function<void(const std::string&)> logger_;

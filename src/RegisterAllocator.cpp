@@ -247,6 +247,7 @@ bool RegisterAllocator::allocate(IRProgram& program) {
     nextStackSlot_ = 0;
     tempCounter_ = 0;
     spilledVariables_.clear();
+    coalescedAliases_.clear();
 
     // Check for physical register name collisions in the input
     std::set<std::string> invalidNames;
@@ -310,6 +311,7 @@ bool RegisterAllocator::allocate(IRProgram& program) {
                 for (auto& c : cr) {
                     roundCoalesceResults.push_back(c);
                     if (c.coalesced) {
+                        coalescedAliases_[c.b] = c.a;
                         coalescingProgress = true;
                         log("  Coalescing: " + c.a + " <- " + c.b + " : SAFE (merged), rebuilding CFG...");
                     } else {
@@ -367,6 +369,7 @@ bool RegisterAllocator::allocate(IRProgram& program) {
                 result_.assignments[var] = a;
             }
             result_.totalStackSlots = nextStackSlot_;
+            result_.aliases = coalescedAliases_;
 
             // Apply physical register names to the IR
             applyAssignment(program, trace.selectAssignment);

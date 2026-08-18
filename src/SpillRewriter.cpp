@@ -41,8 +41,8 @@ std::unordered_set<std::string> SpillRewriter::rewrite(
         }
     }
 
-    // Process instructions from back to front so that insertions don't
-    // invalidate our indices.
+    // Rebuild the instruction list in source order so inserted memory
+    // operations stay adjacent to the instruction they support.
     std::vector<Instruction> newInstrs;
 
     for (size_t i = 0; i < program.instructions.size(); ++i) {

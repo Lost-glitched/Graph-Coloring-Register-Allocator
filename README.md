@@ -197,7 +197,7 @@ src/
 └── main.cpp               Demo driver
 
 tests/
-└── test_main.cpp          10 automated test cases
+└── test_main.cpp          20 automated test cases
 ```
 
 All modules are decoupled and testable independently.
