@@ -21,26 +21,23 @@
 
 namespace regalloc {
 
-std::string SpillRewriter::freshTemp(const std::string& base) {
-    return base + ".spill." + std::to_string(tempCounter_++);
-}
-
-int SpillRewriter::slotFor(const std::string& var) const {
-    auto it = varToSlot_.find(var);
-    return (it != varToSlot_.end()) ? it->second : -1;
+std::string SpillRewriter::freshTemp(const std::string& base, int& tempCounter) {
+    return base + ".spill." + std::to_string(tempCounter++);
 }
 
 std::unordered_set<std::string> SpillRewriter::rewrite(
     IRProgram& program,
     const std::unordered_set<std::string>& spilledVars,
-    int& nextSlot) {
+    int& nextSlot,
+    int& tempCounter,
+    std::unordered_map<std::string, int>& varToSlot) {
 
     std::unordered_set<std::string> newTemps;
 
     // Assign stack slots to spilled variables
     for (auto& v : spilledVars) {
-        if (varToSlot_.find(v) == varToSlot_.end()) {
-            varToSlot_[v] = nextSlot++;
+        if (varToSlot.find(v) == varToSlot.end()) {
+            varToSlot[v] = nextSlot++;
         }
     }
 
@@ -73,12 +70,12 @@ std::unordered_set<std::string> SpillRewriter::rewrite(
             if (existing != spillTempMap.end()) {
                 tmp = existing->second; // reuse if we already loaded this var
             } else {
-                tmp = freshTemp(u);
+                tmp = freshTemp(u, tempCounter);
                 spillTempMap[u] = tmp;
                 newTemps.insert(tmp);
 
                 // Insert LOAD tmp, [slot]
-                newInstrs.push_back(Instruction::makeLoad(tmp, varToSlot_[u]));
+                newInstrs.push_back(Instruction::makeLoad(tmp, varToSlot[u]));
             }
 
             // Replace u with tmp in the instruction
@@ -98,7 +95,7 @@ std::unordered_set<std::string> SpillRewriter::rewrite(
             if (existing != spillTempMap.end()) {
                 defSpillTemp = existing->second;
             } else {
-                defSpillTemp = freshTemp(d);
+                defSpillTemp = freshTemp(d, tempCounter);
                 spillTempMap[d] = defSpillTemp;
                 newTemps.insert(defSpillTemp);
             }
@@ -113,7 +110,7 @@ std::unordered_set<std::string> SpillRewriter::rewrite(
         // --- Insert STORE after the instruction if there was a spilled def ---
         if (!defSpillTemp.empty()) {
             newInstrs.push_back(
-                Instruction::makeStore(defSpillTemp, varToSlot_[defSpillVar]));
+                Instruction::makeStore(defSpillTemp, varToSlot[defSpillVar]));
         }
     }
 

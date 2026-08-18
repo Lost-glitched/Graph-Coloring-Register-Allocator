@@ -94,7 +94,13 @@ Instruction Parser::parseLine(const std::string& rawLine, int lineNumber) const 
         std::string dest = tokens[1];
         if (!dest.empty() && dest.back() == ',') dest.pop_back();
         std::string slot = stripBrackets(tokens[2]);
-        return Instruction::makeLoad(dest, -1);  // slot resolved later if needed
+        int slotIdx = -1;
+        if (slot.find("stack_slot_") == 0) {
+            slotIdx = std::stoi(slot.substr(11));
+        } else {
+            try { slotIdx = std::stoi(slot); } catch (...) {}
+        }
+        return Instruction::makeLoad(dest, slotIdx);
     }
 
     // --- STORE src, [slot] ---
@@ -105,7 +111,13 @@ Instruction Parser::parseLine(const std::string& rawLine, int lineNumber) const 
         std::string src = tokens[1];
         if (!src.empty() && src.back() == ',') src.pop_back();
         std::string slot = stripBrackets(tokens[2]);
-        return Instruction::makeStore(src, -1);
+        int slotIdx = -1;
+        if (slot.find("stack_slot_") == 0) {
+            slotIdx = std::stoi(slot.substr(11));
+        } else {
+            try { slotIdx = std::stoi(slot); } catch (...) {}
+        }
+        return Instruction::makeStore(src, slotIdx);
     }
 
     // --- Assignment: dest = src1 (op src2)? ---

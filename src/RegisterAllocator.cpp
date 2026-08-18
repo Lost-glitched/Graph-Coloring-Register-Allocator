@@ -100,10 +100,11 @@ MoveGraph RegisterAllocator::detectMoves(const IRProgram& program) const {
 }
 
 // ---------------------------------------------------------------------------
-// simplify — push nodes with degree < K; optimistic spill when stuck
+// simplify — push non-move-related nodes with degree < K; freeze; optimistic spill when stuck
 // ---------------------------------------------------------------------------
 std::vector<StackEntry> RegisterAllocator::simplify(
     InterferenceGraph& ig,
+    MoveGraph& moves,
     const SpillCostAnalyzer& spillCosts,
     RoundTrace& trace) const {
 
@@ -115,20 +116,34 @@ std::vector<StackEntry> RegisterAllocator::simplify(
         auto nodes = ig.activeNodes(); // sorted set
 
         for (auto& v : nodes) {
-            if (ig.degree(v) < K_) {
+            if (ig.degree(v) < K_ && !moves.isMoveRelated(v)) {
                 // Push and remove
                 auto neighbors = ig.removeNode(v);
                 stack.push_back({v, neighbors, false});
                 trace.simplifyOrder.push_back(v);
                 log("  SIMPLIFY: push " + v + " (degree " +
                     std::to_string(static_cast<int>(neighbors.size())) + " < " +
-                    std::to_string(K_) + ")");
+                    std::to_string(K_) + ", not move-related)");
                 found = true;
                 break;
             }
         }
 
         if (found) continue;
+
+        // --- Freeze Phase ---
+        // If simplify couldn't progress, try to freeze a low-degree move-related node
+        bool frozen = false;
+        for (auto& v : nodes) {
+            if (ig.degree(v) < K_ && moves.isMoveRelated(v)) {
+                log("  FREEZE: giving up coalescing for " + v);
+                moves.removeMovesFor(v);
+                frozen = true;
+                break;
+            }
+        }
+
+        if (frozen) continue;
 
         // --- All nodes have degree >= K → optimistic spill ---
         // Pick the node with the lowest spill cost (best candidate to spill).
@@ -227,6 +242,18 @@ void RegisterAllocator::applyAssignment(
 bool RegisterAllocator::allocate(IRProgram& program) {
     traces_.clear();
     result_ = AllocationResult{};
+    tempCounter_ = 0;
+    spilledVariables_.clear();
+
+    // Check for physical register name collisions in the input
+    std::set<std::string> invalidNames;
+    for (int i = 0; i < K_; ++i) invalidNames.insert("R" + std::to_string(i));
+    for (auto& v : program.allVariables()) {
+        if (invalidNames.count(v)) {
+            // Prepend a prefix to sanitize user variables colliding with R0, R1...
+            program.renameVariable(v, "_user_" + v);
+        }
+    }
 
     // Global assignment map accumulated across rounds (for coalesced names)
     std::unordered_map<std::string, int> globalAssignment;
@@ -238,49 +265,70 @@ bool RegisterAllocator::allocate(IRProgram& program) {
         log("\n========== Allocation Round " + std::to_string(round) +
             " ==========\n");
 
-        // --- 1. Build CFG ---
         ControlFlowGraph cfg;
-        cfg.build(program);
-        trace.cfgDump = cfg.toString();
-        log(trace.cfgDump);
-
-        // --- 2. Liveness analysis ---
         LivenessAnalyzer liveness;
-        liveness.analyze(cfg);
-        trace.livenessDump = liveness.toString();
-        log(trace.livenessDump);
+        InterferenceGraph ig;
+        MoveGraph moves;
+        std::vector<CoalesceResult> roundCoalesceResults;
 
-        // --- 3. Build interference graph ---
-        InterferenceGraph ig = buildInterferenceGraph(cfg, liveness);
-        trace.interferenceGraphDump = ig.toString();
-        log(trace.interferenceGraphDump);
+        bool coalescingProgress = true;
+        while (coalescingProgress) {
+            coalescingProgress = false;
 
-        // If no variables to allocate, we're done
+            // --- 1. Build CFG ---
+            cfg.build(program);
+            if (roundCoalesceResults.empty()) { // only log on first iteration
+                trace.cfgDump = cfg.toString();
+                log(trace.cfgDump);
+            }
+
+            // --- 2. Liveness analysis ---
+            liveness.analyze(cfg);
+            if (roundCoalesceResults.empty()) {
+                trace.livenessDump = liveness.toString();
+                log(trace.livenessDump);
+            }
+
+            // --- 3. Build interference graph ---
+            ig = buildInterferenceGraph(cfg, liveness);
+            if (roundCoalesceResults.empty()) {
+                trace.interferenceGraphDump = ig.toString();
+                log(trace.interferenceGraphDump);
+            }
+
+            // If no variables to allocate, we're done
+            if (ig.activeNodeCount() == 0) {
+                break;
+            }
+
+            // --- 4. Move detection + coalescing ---
+            moves = detectMoves(program);
+            Coalescer coalescer;
+            auto cr = coalescer.coalesce(ig, moves, program, K_);
+            
+            if (!cr.empty()) {
+                coalescingProgress = true;
+                for (auto& c : cr) {
+                    roundCoalesceResults.push_back(c);
+                    if (c.coalesced) {
+                        log("  Coalescing: " + c.a + " <- " + c.b + " : SAFE (merged), rebuilding CFG...");
+                    } else {
+                        log("  Coalescing: " + c.a + " <- " + c.b +
+                            " : REJECTED (" + c.reason + ")");
+                    }
+                }
+            }
+        }
+        trace.coalesceResults = roundCoalesceResults;
+
         if (ig.activeNodeCount() == 0) {
             log("No variables to allocate.\n");
             traces_.push_back(std::move(trace));
             break;
         }
 
-        // --- 4. Move detection + coalescing ---
-        MoveGraph moves = detectMoves(program);
-        Coalescer coalescer;
-        auto coalesceResults = coalescer.coalesce(ig, moves, program, K_);
-        trace.coalesceResults = coalesceResults;
-
-        for (auto& cr : coalesceResults) {
-            if (cr.coalesced) {
-                log("  Coalescing: " + cr.a + " <- " + cr.b + " : SAFE (merged)");
-            } else {
-                log("  Coalescing: " + cr.a + " <- " + cr.b +
-                    " : REJECTED (" + cr.reason + ")");
-            }
-        }
-
-        // After coalescing, the interference graph and program have been mutated.
-        // Log updated graph.
-        if (!coalesceResults.empty()) {
-            log("\n  After coalescing:\n" + ig.toString());
+        if (!roundCoalesceResults.empty()) {
+            log("\n  After coalescing (final for round):\n" + ig.toString());
         }
 
         // --- 5. Spill cost analysis ---
@@ -289,7 +337,7 @@ bool RegisterAllocator::allocate(IRProgram& program) {
 
         // --- 6. Simplify ---
         log("\n--- Simplify Phase ---");
-        auto selectStack = simplify(ig, spillCosts, trace);
+        auto selectStack = simplify(ig, moves, spillCosts, trace);
 
         // --- 7. Select / Color ---
         log("\n--- Select Phase ---");
@@ -308,11 +356,21 @@ bool RegisterAllocator::allocate(IRProgram& program) {
             }
 
             // Build final result
+            for (auto& [var, slot] : spilledVariables_) {
+                Assignment a;
+                a.variable = var;
+                a.spilled  = true;
+                a.physReg  = -1;
+                a.stackSlot = slot;
+                result_.assignments[var] = a;
+            }
+
             for (auto& [var, reg] : trace.selectAssignment) {
                 Assignment a;
                 a.variable = var;
                 a.spilled  = false;
                 a.physReg  = reg;
+                a.stackSlot = -1;
                 result_.assignments[var] = a;
             }
             result_.totalStackSlots = nextStackSlot_;
@@ -330,7 +388,7 @@ bool RegisterAllocator::allocate(IRProgram& program) {
         }
 
         SpillRewriter rewriter;
-        auto newTemps = rewriter.rewrite(program, actualSpills, nextStackSlot_);
+        auto newTemps = rewriter.rewrite(program, actualSpills, nextStackSlot_, tempCounter_, spilledVariables_);
 
         log("  Inserted " + std::to_string(newTemps.size()) +
             " new temporaries for spills.");

@@ -77,6 +77,8 @@ private:
     int K_;
     int maxRounds_{50};
     int nextStackSlot_{0};
+    int tempCounter_{0};
+    std::unordered_map<std::string, int> spilledVariables_;
     AllocationResult result_;
     std::vector<RoundTrace> traces_;
     std::function<void(const std::string&)> logger_;
@@ -93,10 +95,11 @@ private:
     /// Detect move instructions in the program.
     MoveGraph detectMoves(const IRProgram& program) const;
 
-    /// Simplify phase + optimistic spill selection.
+    /// Simplify phase + freeze + optimistic spill selection.
     /// Returns the select stack (top = last pushed = first to pop).
     std::vector<StackEntry> simplify(
         InterferenceGraph& ig,
+        MoveGraph& moves,
         const SpillCostAnalyzer& spillCosts,
         RoundTrace& trace) const;
 

@@ -27,6 +27,9 @@ public:
     /// Whether `v` appears in any move pair.
     bool isMoveRelated(const std::string& v) const;
 
+    /// Remove all moves associated with variable `v` (used for Freezing).
+    void removeMovesFor(const std::string& v);
+
     /// Clear all moves.
     void clear();
 

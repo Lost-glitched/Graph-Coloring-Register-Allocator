@@ -27,17 +27,13 @@ public:
     std::unordered_set<std::string> rewrite(
         IRProgram& program,
         const std::unordered_set<std::string>& spilledVars,
-        int& nextSlot);       // in/out: next available stack slot
-
-    /// Get the slot assigned to a spilled variable.
-    int slotFor(const std::string& var) const;
+        int& nextSlot,
+        int& tempCounter,
+        std::unordered_map<std::string, int>& varToSlot);
 
 private:
-    int tempCounter_{0};
-    std::unordered_map<std::string, int> varToSlot_;
-
     /// Generate a fresh temporary name derived from `base`.
-    std::string freshTemp(const std::string& base);
+    std::string freshTemp(const std::string& base, int& tempCounter);
 };
 
 } // namespace regalloc
