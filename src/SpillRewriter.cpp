@@ -35,7 +35,9 @@ std::unordered_set<std::string> SpillRewriter::rewrite(
     std::unordered_set<std::string> newTemps;
 
     // Assign stack slots to spilled variables
-    for (auto& v : spilledVars) {
+    std::vector<std::string> sortedSpilledVars(spilledVars.begin(), spilledVars.end());
+    std::sort(sortedSpilledVars.begin(), sortedSpilledVars.end());
+    for (const auto& v : sortedSpilledVars) {
         if (varToSlot.find(v) == varToSlot.end()) {
             varToSlot[v] = nextSlot++;
         }

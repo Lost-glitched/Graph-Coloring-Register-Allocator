@@ -151,28 +151,9 @@ The demo runs a built-in sample program through the entire pipeline and prints d
 ./build/tests
 ```
 
-Runs 20 automated tests covering:
-
-1. No spilling needed (K=4)
-2. Spilling required (K=2)
-3. Copy instructions present
-4. Safe coalescing
-5. Unsafe coalescing rejection
-6. Branches and multiple basic blocks
-7. Loops and spill-cost heuristics
-8. Optimistic spill candidates that get colored
-9. Optimistic spill candidates that actually spill
-10. Freeze decisions after rejected coalescing
-11. No-spill coloring
-12. Optimistic spill candidates that get colored
-13. Optimistic spill candidates that actually spill
-14. Spill rewriting and stack-slot assignment
-15. Multiple spill rounds and fresh spill temporaries
-16. Physical-register-name collisions
-17. Different K values (K=2 and K=3)
-18. Loop-containing programs
-19. Final allocation invariants
-20. Remaining move validity
+Runs 22 automated tests covering parsing, CFG/liveness, coalescing, freezing,
+optimistic spilling, spill rewriting, constants, empty programs, physical-name
+collisions, loops, multiple register counts, and final allocation invariants.
 
 ## Architecture
 
@@ -197,7 +178,7 @@ src/
 └── main.cpp               Demo driver
 
 tests/
-└── test_main.cpp          20 automated test cases
+└── test_main.cpp          22 automated test cases
 ```
 
 All modules are decoupled and testable independently.

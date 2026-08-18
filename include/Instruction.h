@@ -33,6 +33,9 @@ enum class Opcode {
 /// Human-readable opcode name.
 std::string opcodeToString(Opcode op);
 
+/// True when an operand is a numeric literal rather than a virtual register.
+bool isNumericLiteral(const std::string& value);
+
 // ----------------------------------------------------------------------------
 // Instruction
 // ----------------------------------------------------------------------------

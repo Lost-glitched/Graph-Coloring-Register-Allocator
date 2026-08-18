@@ -3,9 +3,45 @@
 // ============================================================================
 
 #include "Instruction.h"
+#include <cctype>
 #include <stdexcept>
 
 namespace regalloc {
+
+bool isNumericLiteral(const std::string& value) {
+    if (value.empty()) return false;
+
+    size_t pos = 0;
+    if (value[pos] == '+' || value[pos] == '-') ++pos;
+
+    bool hasDigits = false;
+    while (pos < value.size() && std::isdigit(static_cast<unsigned char>(value[pos]))) {
+        hasDigits = true;
+        ++pos;
+    }
+
+    if (pos < value.size() && value[pos] == '.') {
+        ++pos;
+        while (pos < value.size() && std::isdigit(static_cast<unsigned char>(value[pos]))) {
+            hasDigits = true;
+            ++pos;
+        }
+    }
+
+    if (!hasDigits) return false;
+
+    if (pos < value.size() && (value[pos] == 'e' || value[pos] == 'E')) {
+        ++pos;
+        if (pos < value.size() && (value[pos] == '+' || value[pos] == '-')) ++pos;
+        size_t exponentStart = pos;
+        while (pos < value.size() && std::isdigit(static_cast<unsigned char>(value[pos]))) {
+            ++pos;
+        }
+        if (pos == exponentStart) return false;
+    }
+
+    return pos == value.size();
+}
 
 // ----------------------------------------------------------------------------
 // opcodeToString
@@ -52,20 +88,20 @@ std::vector<std::string> Instruction::getUses() const {
     std::vector<std::string> uses;
     switch (opcode) {
         case Opcode::MOV:
-            if (!src1.empty()) uses.push_back(src1);
+            if (!src1.empty() && !isNumericLiteral(src1)) uses.push_back(src1);
             break;
         case Opcode::ADD:
         case Opcode::SUB:
         case Opcode::MUL:
         case Opcode::DIV:
-            if (!src1.empty()) uses.push_back(src1);
-            if (!src2.empty()) uses.push_back(src2);
+            if (!src1.empty() && !isNumericLiteral(src1)) uses.push_back(src1);
+            if (!src2.empty() && !isNumericLiteral(src2)) uses.push_back(src2);
             break;
         case Opcode::STORE:
             if (!src1.empty()) uses.push_back(src1);
             break;
         case Opcode::BRANCH:
-            if (!src1.empty()) uses.push_back(src1);
+            if (!src1.empty() && !isNumericLiteral(src1)) uses.push_back(src1);
             break;
         default:
             break;

@@ -48,12 +48,13 @@ static bool validateFinalAllocation(const IRProgram& originalProgram, const IRPr
         if (!instr.dest.empty()) {
             TEST_ASSERT(physNames.count(instr.dest) > 0, "Final IR contains virtual dest: " + instr.dest);
         }
-        if (!instr.src1.empty() && instr.opcode != Opcode::GOTO) {
+        if (!instr.src1.empty() && instr.opcode != Opcode::GOTO &&
+            !isNumericLiteral(instr.src1)) {
             if (instr.opcode == Opcode::BRANCH || instr.opcode != Opcode::LABEL) {
                 TEST_ASSERT(physNames.count(instr.src1) > 0, "Final IR contains virtual src1: " + instr.src1);
             }
         }
-        if (!instr.src2.empty()) {
+        if (!instr.src2.empty() && !isNumericLiteral(instr.src2)) {
             TEST_ASSERT(physNames.count(instr.src2) > 0, "Final IR contains virtual src2: " + instr.src2);
         }
     }
@@ -144,6 +145,40 @@ static bool test_invalidParser() {
     TEST_ASSERT(caught1, "Caught invalid slot");
     TEST_ASSERT(caught2, "Caught extra tokens");
     TEST_ASSERT(caught3, "Caught malformed assignment without spaces");
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+// 4. Numeric constants remain literals
+// ----------------------------------------------------------------------------
+static bool test_numericConstants() {
+    Parser parser;
+    auto program = parser.parse("a = 1\nb = a + 2.5\n");
+    RegisterAllocator allocator(2);
+    TEST_ASSERT(allocator.allocate(program), "Constant program allocation succeeded");
+    TEST_ASSERT(program.toString().find("= 1") != std::string::npos,
+        "Integer literal remains in final IR");
+    TEST_ASSERT(program.toString().find("+ 2.5") != std::string::npos,
+        "Floating-point literal remains in final IR");
+    TEST_ASSERT(allocator.result().assignments.count("1") == 0,
+        "Integer literal was not allocated as a variable");
+    TEST_ASSERT(allocator.result().assignments.count("2.5") == 0,
+        "Floating-point literal was not allocated as a variable");
+    TEST_ASSERT(validateFinalAllocation(program, program, allocator, 2),
+        "Constant operands satisfy final allocation invariants");
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+// 5. Empty program
+// ----------------------------------------------------------------------------
+static bool test_emptyProgram() {
+    Parser parser;
+    auto program = parser.parse("");
+    RegisterAllocator allocator(2);
+    TEST_ASSERT(allocator.allocate(program), "Empty program allocation succeeded");
+    TEST_ASSERT(allocator.result().assignments.empty(), "Empty program has no assignments");
+    TEST_ASSERT(allocator.result().totalStackSlots == 0, "Empty program has no stack slots");
     return true;
 }
 
@@ -596,23 +631,25 @@ int main() {
     runTest("1. Basic parser", test_basicParser);
     runTest("2. LOAD/STORE parser", test_loadStoreParser);
     runTest("3. Invalid parser input", test_invalidParser);
-    runTest("4. CFG construction", test_cfgConstruction);
-    runTest("5. Undefined label detection", test_undefinedLabel);
-    runTest("6. Liveness", test_liveness);
-    runTest("7. Interference graph", test_interferenceGraph);
-    runTest("8. MOVE interference exception", test_moveException);
-    runTest("9. Safe coalescing", test_safeCoalescing);
-    runTest("10. Unsafe coalescing", test_unsafeCoalescing);
-    runTest("11. Freeze", test_freeze);
-    runTest("12. No-spill coloring", test_noSpillColoring);
-    runTest("13. Optimistic candidate successfully colored", test_optimisticColored);
-    runTest("14. Actual spill", test_actualSpill);
-    runTest("15. Spill rewrite", test_spillRewrite);
-    runTest("16. Multiple spill rounds", test_multipleSpillRounds);
-    runTest("17. Physical-register-name collision", test_physRegCollision);
-    runTest("18. Different K values", test_differentK);
-    runTest("19. Loop-containing program", test_loopProgram);
-    runTest("20. Final allocation invariant validation", test_finalValidationDirect);
+    runTest("4. Numeric constants", test_numericConstants);
+    runTest("5. Empty program", test_emptyProgram);
+    runTest("6. CFG construction", test_cfgConstruction);
+    runTest("7. Undefined label detection", test_undefinedLabel);
+    runTest("8. Liveness", test_liveness);
+    runTest("9. Interference graph", test_interferenceGraph);
+    runTest("10. MOVE interference exception", test_moveException);
+    runTest("11. Safe coalescing", test_safeCoalescing);
+    runTest("12. Unsafe coalescing", test_unsafeCoalescing);
+    runTest("13. Freeze", test_freeze);
+    runTest("14. No-spill coloring", test_noSpillColoring);
+    runTest("15. Optimistic candidate successfully colored", test_optimisticColored);
+    runTest("16. Actual spill", test_actualSpill);
+    runTest("17. Spill rewrite", test_spillRewrite);
+    runTest("18. Multiple spill rounds", test_multipleSpillRounds);
+    runTest("19. Physical-register-name collision", test_physRegCollision);
+    runTest("20. Different K values", test_differentK);
+    runTest("21. Loop-containing program", test_loopProgram);
+    runTest("22. Final allocation invariant validation", test_finalValidationDirect);
 
     std::cout << "\n==========================================================\n";
     std::cout << "  Results: " << testsPassed << " / " << testsRun << " passed\n";

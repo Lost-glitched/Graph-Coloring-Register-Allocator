@@ -22,13 +22,18 @@
 #include <iostream>
 #include <set>
 #include <cassert>
+#include <stdexcept>
 
 namespace regalloc {
 
 // ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
-RegisterAllocator::RegisterAllocator(int K) : K_(K) {}
+RegisterAllocator::RegisterAllocator(int K) : K_(K) {
+    if (K_ <= 0) {
+        throw std::invalid_argument("Register count must be positive");
+    }
+}
 
 void RegisterAllocator::setLogger(std::function<void(const std::string&)> logger) {
     logger_ = std::move(logger);
@@ -92,7 +97,8 @@ InterferenceGraph RegisterAllocator::buildInterferenceGraph(
 MoveGraph RegisterAllocator::detectMoves(const IRProgram& program) const {
     MoveGraph mg;
     for (auto& instr : program.instructions) {
-        if (instr.isMove() && !instr.src1.empty() && !instr.dest.empty()) {
+        if (instr.isMove() && !instr.src1.empty() && !instr.dest.empty() &&
+            !isNumericLiteral(instr.src1)) {
             mg.addMove(instr.src1, instr.dest);
         }
     }
@@ -326,7 +332,8 @@ bool RegisterAllocator::allocate(IRProgram& program) {
         if (ig.activeNodeCount() == 0) {
             log("No variables to allocate.\n");
             traces_.push_back(std::move(trace));
-            break;
+            result_.aliases = coalescedAliases_;
+            return true;
         }
 
         if (!roundCoalesceResults.empty()) {
